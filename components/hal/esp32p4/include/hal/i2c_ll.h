@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -130,6 +130,45 @@ static inline void i2c_ll_update(i2c_dev_t *hw)
 {
     hw->ctr.conf_upgate = 1;
 }
+
+/**
+ * @brief Enable the bus clock for I2C module
+ *
+ * @param i2c_port I2C port id
+ * @param enable true to enable, false to disable
+ */
+static inline void i2c_ll_enable_bus_clock(int i2c_port, bool enable)
+{
+    if (i2c_port == 0) {
+        HP_SYS_CLKRST.soc_clk_ctrl2.reg_i2c0_apb_clk_en = enable;
+    } else if (i2c_port == 1) {
+        HP_SYS_CLKRST.soc_clk_ctrl2.reg_i2c1_apb_clk_en = enable;
+    }
+}
+
+/// use a macro to wrap the function, force the caller to use it in a critical section
+/// the critical section needs to declare the __DECLARE_RCC_ATOMIC_ENV variable in advance
+#define i2c_ll_enable_bus_clock(...) do {(void)__DECLARE_RCC_ATOMIC_ENV; i2c_ll_enable_bus_clock(__VA_ARGS__);} while(0)
+
+/**
+ * @brief Reset the I2C module
+ *
+ * @param i2c_port Group ID
+ */
+static inline void i2c_ll_reset_register(int i2c_port)
+{
+    if (i2c_port == 0) {
+        HP_SYS_CLKRST.hp_rst_en1.reg_rst_en_i2c0 = 1;
+        HP_SYS_CLKRST.hp_rst_en1.reg_rst_en_i2c0 = 0;
+    } else if (i2c_port == 1) {
+        HP_SYS_CLKRST.hp_rst_en1.reg_rst_en_i2c1 = 1;
+        HP_SYS_CLKRST.hp_rst_en1.reg_rst_en_i2c1 = 0;
+    }
+}
+
+/// use a macro to wrap the function, force the caller to use it in a critical section
+/// the critical section needs to declare the __DECLARE_RCC_ATOMIC_ENV variable in advance
+#define i2c_ll_reset_register(...) do {(void)__DECLARE_RCC_ATOMIC_ENV; i2c_ll_reset_register(__VA_ARGS__);} while(0)
 
 /**
  * @brief  Configure the I2C bus timing related register.
@@ -753,6 +792,10 @@ static inline void i2c_ll_set_source_clk(i2c_dev_t *hw, i2c_clock_source_t src_c
 
 }
 
+/// use a macro to wrap the function, force the caller to use it in a critical section
+/// the critical section needs to declare the __DECLARE_RCC_ATOMIC_ENV variable in advance
+#define i2c_ll_set_source_clk(...) do {(void)__DECLARE_RCC_ATOMIC_ENV; i2c_ll_set_source_clk(__VA_ARGS__);} while(0)
+
 /**
  * @brief Enable I2C peripheral controller clock
  *
@@ -762,10 +805,8 @@ static inline void i2c_ll_set_source_clk(i2c_dev_t *hw, i2c_clock_source_t src_c
 static inline void i2c_ll_enable_controller_clock(i2c_dev_t *hw, bool en)
 {
     if (hw == &I2C0) {
-        HP_SYS_CLKRST.soc_clk_ctrl2.reg_i2c0_apb_clk_en = en;
         HP_SYS_CLKRST.peri_clk_ctrl10.reg_i2c0_clk_en = en;
     } else if (hw == &I2C1) {
-        HP_SYS_CLKRST.soc_clk_ctrl2.reg_i2c1_apb_clk_en = en;
         HP_SYS_CLKRST.peri_clk_ctrl10.reg_i2c1_clk_en = en;
     } else if (hw == &LP_I2C) {
         // Do nothing
@@ -848,6 +889,20 @@ __attribute__((always_inline))
 static inline void i2c_ll_slave_clear_stretch(i2c_dev_t *dev)
 {
     dev->scl_stretch_conf.slave_scl_stretch_clr = 1;
+}
+
+/**
+ * @brief Check if i2c command is done.
+ *
+ * @param  hw Beginning address of the peripheral registers
+ * @param  cmd_idx The index of the command register, must be less than 8
+ *
+ * @return True if the `cmd_idx` command is done. Otherwise false.
+ */
+__attribute__((always_inline))
+static inline bool i2c_ll_master_is_cmd_done(i2c_dev_t *hw, int cmd_idx)
+{
+    return hw->command[cmd_idx].command_done;
 }
 
 //////////////////////////////////////////Deprecated Functions//////////////////////////////////////////////////////////

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -37,7 +37,11 @@
 #include "freertos/FreeRTOSConfig.h"
 
 /* Macros used instead ofsetoff() for better performance of interrupt handler */
+#if CONFIG_FREERTOS_USE_LIST_DATA_INTEGRITY_CHECK_BYTES
+#define PORT_OFFSET_PX_STACK 0x40
+#else
 #define PORT_OFFSET_PX_STACK 0x30
+#endif /* #if CONFIG_FREERTOS_USE_LIST_DATA_INTEGRITY_CHECK_BYTES */
 
 #if CONFIG_FREERTOS_UNICORE
 #define CORE_ID_SIZE        0
@@ -462,7 +466,7 @@ void vPortTCBPreDeleteHook( void *pxTCB );
 // --------------------- Interrupts ------------------------
 
 #define portDISABLE_INTERRUPTS()            portSET_INTERRUPT_MASK_FROM_ISR()
-#define portENABLE_INTERRUPTS()             portCLEAR_INTERRUPT_MASK_FROM_ISR(1)
+#define portENABLE_INTERRUPTS()             portCLEAR_INTERRUPT_MASK_FROM_ISR(RVHAL_INTR_ENABLE_THRESH)
 
 /**
  * ISR versions to enable/disable interrupts
@@ -689,6 +693,17 @@ FORCE_INLINE_ATTR bool xPortCanYield(void)
 // -------------------- Heap Related -----------------------
 
 /**
+ * @brief Checks if a given piece of memory can be used to store a FreeRTOS list
+ *
+ * - Defined in heap_idf.c
+ *
+ * @param ptr Pointer to memory
+ * @return true Memory can be used to store a List
+ * @return false Otherwise
+ */
+bool xPortCheckValidListMem(const void *ptr);
+
+/**
  * @brief Checks if a given piece of memory can be used to store a task's TCB
  *
  * - Defined in heap_idf.c
@@ -710,6 +725,7 @@ bool xPortCheckValidTCBMem(const void *ptr);
  */
 bool xPortcheckValidStackMem(const void *ptr);
 
+#define portVALID_LIST_MEM(ptr)     xPortCheckValidListMem(ptr)
 #define portVALID_TCB_MEM(ptr)      xPortCheckValidTCBMem(ptr)
 #define portVALID_STACK_MEM(ptr)    xPortcheckValidStackMem(ptr)
 

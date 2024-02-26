@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2020-2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2020-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -17,6 +17,7 @@
 #include "hal/i2c_types.h"
 #include "soc/rtc_cntl_reg.h"
 #include "soc/clk_tree_defs.h"
+#include "soc/system_struct.h"
 #include "esp_attr.h"
 #include "hal/misc.h"
 
@@ -124,6 +125,38 @@ static inline void i2c_ll_update(i2c_dev_t *hw)
 {
     hw->ctr.conf_upgate = 1;
 }
+
+/**
+ * @brief Enable the bus clock for I2C module
+ *
+ * @param i2c_port I2C port id
+ * @param enable true to enable, false to disable
+ */
+static inline void i2c_ll_enable_bus_clock(int i2c_port, bool enable)
+{
+    (void)i2c_port;
+    SYSTEM.perip_clk_en0.reg_i2c_ext0_clk_en = enable;
+}
+
+/// use a macro to wrap the function, force the caller to use it in a critical section
+/// the critical section needs to declare the __DECLARE_RCC_ATOMIC_ENV variable in advance
+#define i2c_ll_enable_bus_clock(...) do {(void)__DECLARE_RCC_ATOMIC_ENV; i2c_ll_enable_bus_clock(__VA_ARGS__);} while(0)
+
+/**
+ * @brief Reset the I2C module
+ *
+ * @param i2c_port Group ID
+ */
+static inline void i2c_ll_reset_register(int i2c_port)
+{
+    (void)i2c_port;
+    SYSTEM.perip_rst_en0.reg_i2c_ext0_rst = 1;
+    SYSTEM.perip_rst_en0.reg_i2c_ext0_rst = 0;
+}
+
+/// use a macro to wrap the function, force the caller to use it in a critical section
+/// the critical section needs to declare the __DECLARE_RCC_ATOMIC_ENV variable in advance
+#define i2c_ll_reset_register(...) do {(void)__DECLARE_RCC_ATOMIC_ENV; i2c_ll_reset_register(__VA_ARGS__);} while(0)
 
 /**
  * @brief  Configure the I2C bus timing related register.
@@ -825,6 +858,20 @@ __attribute__((always_inline))
 static inline void i2c_ll_slave_clear_stretch(i2c_dev_t *dev)
 {
     dev->scl_stretch_conf.slave_scl_stretch_clr = 1;
+}
+
+/**
+ * @brief Check if i2c command is done.
+ *
+ * @param  hw Beginning address of the peripheral registers
+ * @param  cmd_idx The index of the command register, must be less than 8
+ *
+ * @return True if the `cmd_idx` command is done. Otherwise false.
+ */
+__attribute__((always_inline))
+static inline bool i2c_ll_master_is_cmd_done(i2c_dev_t *hw, int cmd_idx)
+{
+    return hw->command[cmd_idx].command0_done;
 }
 
 //////////////////////////////////////////Deprecated Functions//////////////////////////////////////////////////////////

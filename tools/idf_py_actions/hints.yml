@@ -55,8 +55,8 @@
             hint_variables: ['esp_spiram_get_chip_size and esp_spiram_get_size', 'esp_psram_get_size()']
 
 -
-    re: "error: implicit declaration of function 'esp_secure_boot_verify_sbv2_signature_block|esp_secure_boot_verify_rsa_signature_block'"
-    hint: "'esp_secure_boot_verify_sbv2_signature_block()' and 'esp_secure_boot_verify_rsa_signature_block()' and have been made private and are no longer available."
+    re: "error: implicit declaration of function 'esp_secure_boot_verify_rsa_signature_block'"
+    hint: "'esp_secure_boot_verify_rsa_signature_block()' has been made private and is no longer available."
 
 -
     re: "error: implicit declaration of function '{}'"
@@ -315,6 +315,10 @@
 -
     re: "Error: libusb_open\\(\\) failed with LIBUSB_ERROR_ACCESS"
     hint: "OpenOCD process does not have permissions to access the USB JTAG/serial device. Please use 'LIBUSB_DEBUG=1 idf.py openocd' to find out the device name and check its access rights."
+
+-
+    re: "Error: libusb_open\\(\\) failed with LIBUSB_ERROR_NOT_FOUND"
+    hint: "Device drivers are not correct.\nPlease check configuration of USB drivers: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/jtag-debugging/configure-ft2232h-jtag.html?highlight=zadig#configure-usb-drivers"
 
 -
     re: "(-Werror=address|-Werror=use-after-free)"

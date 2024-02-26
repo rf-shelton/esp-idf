@@ -28,6 +28,7 @@
 
 #include <string.h>
 #include "mbedtls/aes.h"
+#include "mbedtls/platform_util.h"
 #include "esp_intr_alloc.h"
 #include "esp_private/periph_ctrl.h"
 #include "esp_log.h"
@@ -52,10 +53,6 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-
-#if SOC_AES_SUPPORT_GCM
-#include "aes/esp_aes_gcm.h"
-#endif
 
 #if SOC_AES_GDMA
 #define AES_LOCK() esp_crypto_sha_aes_lock_acquire()
@@ -488,7 +485,7 @@ cleanup:
 }
 
 
-#if SOC_AES_SUPPORT_GCM
+#if CONFIG_MBEDTLS_HARDWARE_GCM
 
 /* Encrypt/decrypt with AES-GCM the input using DMA
  * The function esp_aes_process_dma_gcm zeroises the output buffer in the case of following conditions:
@@ -623,7 +620,7 @@ cleanup:
     return ret;
 }
 
-#endif //SOC_AES_SUPPORT_GCM
+#endif //CONFIG_MBEDTLS_HARDWARE_GCM
 
 static int esp_aes_validate_input(esp_aes_context *ctx, const unsigned char *input,
                                   unsigned char *output )

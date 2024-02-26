@@ -35,7 +35,7 @@ void IRAM_ATTR esp_system_reset_modules_on_exit(void)
     // Flush any data left in UART FIFOs before reset the UART peripheral
     for (int i = 0; i < SOC_UART_HP_NUM; ++i) {
         if (uart_ll_is_enabled(i)) {
-            esp_rom_uart_tx_wait_idle(i);
+            esp_rom_output_tx_wait_idle(i);
         }
     }
 
@@ -80,7 +80,6 @@ void IRAM_ATTR esp_restart_noos(void)
     wdt_hal_set_flashboot_en(&rtc_wdt_ctx, true);
     wdt_hal_write_protect_enable(&rtc_wdt_ctx);
 
-
     // Disable TG0/TG1 watchdogs
     wdt_hal_context_t wdt0_context = {.inst = WDT_MWDT0, .mwdt_dev = &TIMERG0};
     wdt_hal_write_protect_disable(&wdt0_context);
@@ -111,7 +110,7 @@ void IRAM_ATTR esp_restart_noos(void)
     // instruction. This would cause memory pool to be locked by arbiter
     // to the stalled CPU, preventing current CPU from accessing this pool.
     const uint32_t core_id = esp_cpu_get_core_id();
-#if !CONFIG_FREERTOS_UNICORE
+#if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     const uint32_t other_core_id = (core_id == 0) ? 1 : 0;
     esp_rom_software_reset_cpu(other_core_id);
     esp_cpu_stall(other_core_id);
@@ -134,7 +133,7 @@ void IRAM_ATTR esp_restart_noos(void)
     rtc_clk_cpu_set_to_default_config();
 #endif
 
-#if !CONFIG_FREERTOS_UNICORE
+#if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     // Clear entry point for APP CPU
     REG_WRITE(SYSTEM_CORE_1_CONTROL_1_REG, 0);
 #endif
@@ -142,12 +141,12 @@ void IRAM_ATTR esp_restart_noos(void)
     // Reset CPUs
     if (core_id == 0) {
         // Running on PRO CPU: APP CPU is stalled. Can reset both CPUs.
-#if !CONFIG_FREERTOS_UNICORE
+#if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
         esp_rom_software_reset_cpu(1);
 #endif
         esp_rom_software_reset_cpu(0);
     }
-#if !CONFIG_FREERTOS_UNICORE
+#if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     else {
         // Running on APP CPU: need to reset PRO CPU and unstall it,
         // then reset APP CPU

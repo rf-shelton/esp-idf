@@ -242,36 +242,14 @@ menu "Hardware Settings"
                 Note that, this option only controls the ETM related driver log, won't affect other drivers.
     endmenu # ETM Configuration
 
-    menu "GDMA Configuration"
-        depends on SOC_GDMA_SUPPORTED
-        config GDMA_CTRL_FUNC_IN_IRAM
-            bool "Place GDMA control functions into IRAM"
-            default n
-            help
-                Place GDMA control functions (like start/stop/append/reset) into IRAM,
-                so that these functions can be IRAM-safe and able to be called in the other IRAM interrupt context.
-                Enabling this option can improve driver performance as well.
-
-        config GDMA_ISR_IRAM_SAFE
-            bool "GDMA ISR IRAM-Safe"
-            default n
-            help
-                This will ensure the GDMA interrupt handler is IRAM-Safe, allow to avoid flash
-                cache misses, and also be able to run whilst the cache is disabled.
-                (e.g. SPI Flash write).
-
-        config GDMA_ENABLE_DEBUG_LOG
-            bool "Enable debug log"
-            default n
-            help
-                Wether to enable the debug log message for GDMA driver.
-                Note that, this option only controls the GDMA driver log, won't affect other drivers.
-    endmenu # GDMA Configuration
+    rsource "./dma/Kconfig.dma"
 
     menu "Main XTAL Config"
+        # TODO: IDF-8943
         choice XTAL_FREQ_SEL
             prompt "Main XTAL frequency"
-            default XTAL_FREQ_40 if SOC_XTAL_SUPPORT_40M
+            default XTAL_FREQ_48 if SOC_XTAL_SUPPORT_48M
+            default XTAL_FREQ_40 if (SOC_XTAL_SUPPORT_40M && !SOC_XTAL_SUPPORT_48M)
             help
                 This option selects the operating frequency of the XTAL (crystal) clock used to drive the ESP target.
                 The selected value MUST reflect the frequency of the given hardware.
@@ -294,12 +272,15 @@ menu "Hardware Settings"
             config XTAL_FREQ_40
                 depends on SOC_XTAL_SUPPORT_40M
                 bool "40 MHz"
+            config XTAL_FREQ_48
+                depends on SOC_XTAL_SUPPORT_48M
+                bool "48 MHz"
             config XTAL_FREQ_AUTO
                 depends on SOC_XTAL_SUPPORT_AUTO_DETECT
                 bool "Autodetect"
         endchoice
 
-        # rtc_xtal_freq_t enum in soc/rtc.h lists the XTAL frequencies can be supported
+        # soc_xtal_freq_t enum in soc/clk_tree_defs.h lists the XTAL frequencies can be supported
         # SOC_XTAL_SUPPORT_XXX in soc_caps.h lists the XTAL frequencies already supported
         config XTAL_FREQ
             int
@@ -307,6 +288,7 @@ menu "Hardware Settings"
             default 26 if XTAL_FREQ_26
             default 32 if XTAL_FREQ_32
             default 40 if XTAL_FREQ_40
+            default 48 if XTAL_FREQ_48
             default 0  if XTAL_FREQ_AUTO
     endmenu
 
@@ -348,14 +330,38 @@ menu "Hardware Settings"
 
     endmenu
 
+    menu "LDO Config"
+        depends on SOC_MULTI_USAGE_LDO_SUPPORTED
+        orsource "./port/$IDF_TARGET/Kconfig.ldo"
+    endmenu
+
     # Invisible bringup bypass options for esp_hw_support component
     config ESP_BRINGUP_BYPASS_CPU_CLK_SETTING
         bool
-        default y if !SOC_CLK_TREE_SUPPORTED
+        # TODO: [ESP32C5] IDF-8642 IDF_TARGET_ESP32C5 is added because clock
+        # is required when bringup on C5 beta3, remove it when clock tree is
+        # supported
+        default y if !SOC_CLK_TREE_SUPPORTED && !IDF_TARGET_ESP32C5
         default n
         help
             This option is only used for new chip bringup, when
             clock support isn't done yet. So with this option,
             we use xtal on FPGA as the clock source.
 
+    config ESP_BRINGUP_BYPASS_RANDOM_SETTING
+        bool
+        default y if !SOC_RNG_SUPPORTED
+        default n
+        help
+            This option is only used for new chip bringup, when
+            RNG isn't done yet. So with this option, we use 0x5A
+            to fill the random buffers
+
+    config ESP_SPI_BUS_LOCK_ISR_FUNCS_IN_IRAM
+        bool
+        default n
+
+    config ESP_SPI_BUS_LOCK_FUNCS_IN_IRAM
+        bool
+        default n
 endmenu

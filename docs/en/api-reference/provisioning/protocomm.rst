@@ -28,8 +28,11 @@ Protocomm provides the framework for various transports:
     :SOC_WIFI_SUPPORTED: - Wi-Fi (SoftAP + HTTPD)
     - Console, in which case the handler invocation is automatically taken care of on the device side. See Transport Examples below for code snippets.
 
+Note that for protocomm_security1 and protocomm_security2, the client still needs to establish sessions by performing the two-way handshake.
 
-Note that for protocomm_security1 and protocomm_security2, the client still needs to establish sessions by performing the two-way handshake. See :doc:`provisioning` for more details about the secure handshake logic.
+.. only:: SOC_WIFI_SUPPORTED
+
+    See :doc:`provisioning` for more details about the secure handshake logic.
 
 .. _enabling-protocomm-security-version:
 
@@ -302,4 +305,7 @@ API Reference
 .. include-build-file:: inc/protocomm_security2.inc
 .. include-build-file:: inc/esp_srp.inc
 .. include-build-file:: inc/protocomm_httpd.inc
-.. include-build-file:: inc/protocomm_ble.inc
+
+.. only:: SOC_BLE_SUPPORTED
+
+    .. include-build-file:: inc/protocomm_ble.inc

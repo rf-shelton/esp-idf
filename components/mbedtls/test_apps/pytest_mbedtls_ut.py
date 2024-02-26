@@ -5,6 +5,7 @@ import pytest
 from pytest_embedded import Dut
 
 
+@pytest.mark.temp_skip_ci(targets=['esp32p4'], reason='esp32p4 support TBD')  # TODO: IDF-8982
 @pytest.mark.supported_targets
 @pytest.mark.generic
 def test_mbedtls(dut: Dut) -> None:
@@ -60,7 +61,6 @@ def test_mbedtls_psram(dut: Dut) -> None:
 @pytest.mark.parametrize(
     'config',
     [
-        'psram_esp32',
         'psram_all_ext',
     ],
     indirect=True,

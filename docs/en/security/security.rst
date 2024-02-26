@@ -191,21 +191,40 @@ UART Download Mode
         It is highly recommended to verify the identity of the server based on X.509 certificates to avoid establishing communication with the **fake** server.
 
 
+    Managing Root Certificates
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    Root Certificates embedded inside the application must be managed carefully. Any update to the root certificate list or the :doc:`../api-reference/protocols/esp_crt_bundle` can have an impact on the TLS connection with the remote endpoint. This includes a connection to the OTA update server. In some cases, the problem shall be visible on the next OTA update and it may leave device unable to perform OTA updates forever.
+
+    Root certificates list update could have following reasons:
+
+    - New firmware has different set of remote endpoint(s).
+    - The existing certificate has expired.
+    - The certificate has been added or retracted from the upstream certificate bundle.
+    - The certificate list changed due to market share statistics (``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN`` case).
+
+    Some guidelines to consider on this topic:
+
+    - Please consider enabling :ref:`OTA rollback <ota_rollback>` and then keep the successful connection to the OTA update server as the checkpoint to cancel the rollback process. This ensures that the newly updated firmware can successfully reach till the OTA update server, otherwise rollback process will go back to the previous firmware on the device.
+    - If you plan to enable the :ref:`CONFIG_MBEDTLS_HAVE_TIME_DATE` option, then please consider to have the time sync mechanism (SNTP) and sufficient number of trusted certificates in place.
+
 Product Security
 ----------------
 
-Secure Provisioning
-~~~~~~~~~~~~~~~~~~~
+.. only:: SOC_WIFI_SUPPORTED
 
-Secure Provisioning refers to a process of secure on-boarding of the ESP device on to the Wi-Fi network. This mechanism also allows provision of additional custom configuration data during the initial provisioning phase from the provisioning entity, e.g., Smartphone.
+    Secure Provisioning
+    ~~~~~~~~~~~~~~~~~~~
 
-ESP-IDF provides various security schemes to establish a secure session between ESP and the provisioning entity, they are highlighted at :ref:`provisioning_security_schemes`.
+    Secure Provisioning refers to a process of secure on-boarding of the ESP device on to the Wi-Fi network. This mechanism also allows provision of additional custom configuration data during the initial provisioning phase from the provisioning entity, e.g., Smartphone.
 
-Please refer to the :doc:`../api-reference/provisioning/wifi_provisioning` documentation for details and the example code for this feature.
+    ESP-IDF provides various security schemes to establish a secure session between ESP and the provisioning entity, they are highlighted at :ref:`provisioning_security_schemes`.
 
-.. note::
+    Please refer to the :doc:`../api-reference/provisioning/wifi_provisioning` documentation for details and the example code for this feature.
 
-    Espressif provides Android and iOS Phone Apps along with their sources, so that it could be easy to further customize them as per the product requirement.
+    .. note::
+
+        Espressif provides Android and iOS Phone Apps along with their sources, so that it could be easy to further customize them as per the product requirement.
 
 Secure OTA (Over-the-air) Updates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

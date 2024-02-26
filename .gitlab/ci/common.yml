@@ -33,7 +33,7 @@ variables:
   GIT_FETCH_EXTRA_FLAGS: "--no-recurse-submodules --prune --prune-tags"
   # we're using .cache folder for caches
   GIT_CLEAN_FLAGS: -ffdx -e .cache/
-  LATEST_GIT_TAG: v5.2-dev
+  LATEST_GIT_TAG: v5.3-dev
 
   SUBMODULE_FETCH_TOOL: "tools/ci/ci_fetch_submodule.py"
   # by default we will fetch all submodules
@@ -49,11 +49,9 @@ variables:
   PYTHON_VER: 3.8.17
 
   # Docker images
-  ESP_ENV_IMAGE: "${CI_DOCKER_REGISTRY}/esp-env-v5.2:2"
-  ESP_IDF_DOC_ENV_IMAGE: "${CI_DOCKER_REGISTRY}/esp-idf-doc-env-v5.2:2-1"
-  QEMU_IMAGE: "${CI_DOCKER_REGISTRY}/qemu-v5.2:2-20230522"
-  TARGET_TEST_ENV_IMAGE: "${CI_DOCKER_REGISTRY}/target-test-env-v5.2:2"
-
+  ESP_ENV_IMAGE: "${CI_DOCKER_REGISTRY}/esp-env-v5.3:1"
+  ESP_IDF_DOC_ENV_IMAGE: "${CI_DOCKER_REGISTRY}/esp-idf-doc-env-v5.3:1-1"
+  TARGET_TEST_ENV_IMAGE: "${CI_DOCKER_REGISTRY}/target-test-env-v5.3:1"
   SONARQUBE_SCANNER_IMAGE: "${CI_DOCKER_REGISTRY}/sonarqube-scanner:5"
   PRE_COMMIT_IMAGE: "${CI_DOCKER_REGISTRY}/esp-idf-pre-commit:1"
 
@@ -69,7 +67,7 @@ variables:
   CI_PYTHON_CONSTRAINT_BRANCH: ""
 
   # Update the filename for a specific ESP-IDF release. It is used only with CI_PYTHON_CONSTRAINT_BRANCH.
-  CI_PYTHON_CONSTRAINT_FILE: "espidf.constraints.v5.2.txt"
+  CI_PYTHON_CONSTRAINT_FILE: "espidf.constraints.v5.3.txt"
 
   # Set this variable to repository name of a Python tool you wish to install and test in the context of ESP-IDF CI.
   # Keep the variable empty when not used.
@@ -80,6 +78,9 @@ variables:
   # This is used only if CI_PYTHON_TOOL_REPO is not empty.
   CI_PYTHON_TOOL_BRANCH: ""
 
+  # Set this variable to specify the file name for the known failure cases.
+  KNOWN_FAILURE_CASES_FILE_NAME: "master.txt"
+
   IDF_CI_BUILD: 1
 
 ################################################
@@ -87,6 +88,7 @@ variables:
 ################################################
 .common_before_scripts: &common-before_scripts |
   source tools/ci/utils.sh
+
   is_based_on_commits $REQUIRED_ANCESTOR_COMMITS
 
   if [[ -n "$IDF_DONT_USE_MIRRORS" ]]; then
@@ -139,6 +141,11 @@ variables:
   # Install esp-clang if necessary
   if [[ "$IDF_TOOLCHAIN" == "clang" ]]; then
     $IDF_PATH/tools/idf_tools.py --non-interactive install esp-clang
+  fi
+
+  # Install QEMU if necessary
+  if [[ ! -z "$INSTALL_QEMU" ]]; then
+    $IDF_PATH/tools/idf_tools.py --non-interactive install qemu-xtensa qemu-riscv32
   fi
 
   # Since the version 3.21 CMake passes source files and include dirs to ninja using absolute paths.
@@ -205,6 +212,10 @@ variables:
     - export EXTRA_CXXFLAGS=${PEDANTIC_CXXFLAGS}
 
 .after_script:build:ccache:
+  after_script:
+    - *show_ccache_statistics
+
+.after_script:build:ccache:upload-when-fail:
   after_script:
     - *show_ccache_statistics
     - *upload_failed_job_log_artifacts
@@ -295,10 +306,9 @@ variables:
   before_script:
     - *git_init
     - *git_fetch_from_mirror_url_if_exists
-    - |
-      git fetch origin refs/tags/"${LATEST_GIT_TAG}":refs/tags/"${LATEST_GIT_TAG}" --depth=1
-      git repack -d
-      git fetch origin $CI_COMMIT_SHA --shallow-since=$(git log -1 --format=%as "${LATEST_GIT_TAG}")
+    - git fetch origin refs/tags/"${LATEST_GIT_TAG}":refs/tags/"${LATEST_GIT_TAG}" --depth=1
+    - git repack -d
+    - git fetch origin $PIPELINE_COMMIT_SHA --shallow-since=$(git log -1 --format=%as "${LATEST_GIT_TAG}")
     - *git_checkout_fetch_head
     - *common-before_scripts
     - *setup_tools_and_idf_python_venv
@@ -326,11 +336,15 @@ default:
   cache:
     # pull only for most of the use cases since it's cache dir.
     # Only set "push" policy for "upload_cache" stage jobs
-    - key: pip-cache
+    - key: pip-cache-${LATEST_GIT_TAG}
+      fallback_keys:
+        - pip-cache
       paths:
         - .cache/pip
       policy: pull
-    - key: submodule-cache
+    - key: submodule-cache-${LATEST_GIT_TAG}
+      fallback_keys:
+        - submodule-cache
       paths:
         - .cache/submodule_archives
       policy: pull
@@ -339,6 +353,12 @@ default:
     - *setup_tools_and_idf_python_venv
     - add_gitlab_ssh_keys
     - fetch_submodules
+# gitlab bug, setting them here doesn't work
+# - expire_in: https://gitlab.com/gitlab-org/gitlab/-/issues/404563
+# - when: https://gitlab.com/gitlab-org/gitlab/-/issues/440672
+#  artifacts:
+#    expire_in: 1 week
+#    when: always
   retry:
     max: 2
     when:

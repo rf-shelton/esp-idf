@@ -32,9 +32,7 @@
  * If this file is changed the script will automatically run the script
  * and generate the kconfig variables as part of the pre-commit hooks.
  *
- * It can also be ran manually with `./tools/gen_soc_caps_kconfig/gen_soc_caps_kconfig.py 'components/soc/esp32/include/soc/'`
- *
- * For more information see `tools/gen_soc_caps_kconfig/README.md`
+ * It can also be run manually. For more information, see `${IDF_PATH}/tools/gen_soc_caps_kconfig/README.md`
  */
 
 #pragma once
@@ -101,6 +99,7 @@
 #define SOC_MPU_SUPPORTED           1
 #define SOC_WDT_SUPPORTED           1
 #define SOC_SPI_FLASH_SUPPORTED     1
+#define SOC_RNG_SUPPORTED           1
 
 #if SOC_CAPS_ECO_VER < 200
 #define SOC_DPORT_WORKAROUND                   1
@@ -317,11 +316,10 @@
 #define SOC_TIMER_GROUP_SUPPORT_APB       (1)
 
 /*-------------------------- TOUCH SENSOR CAPS -------------------------------*/
-#define SOC_TOUCH_VERSION_1                 (1)     /*!<Hardware version of touch sensor */
+#define SOC_TOUCH_SENSOR_VERSION            (1U)     /*!<Hardware version of touch sensor */
 #define SOC_TOUCH_SENSOR_NUM                (10)
 
-#define SOC_TOUCH_PAD_MEASURE_WAIT_MAX      (0xFF)  /*!<The timer frequency is 8Mhz, the max value is 0xff */
-#define SOC_TOUCH_PAD_THRESHOLD_MAX         (0)     /*!<If set touch threshold max value, The touch sensor can't be in touched status */
+#define SOC_TOUCH_SAMPLER_NUM               (1U)    /*!< The sampler number in total, each sampler can be used to sample on one frequency */
 
 /*-------------------------- TWAI CAPS ---------------------------------------*/
 #define SOC_TWAI_CONTROLLER_NUM         1UL
@@ -443,3 +441,6 @@
 
 /*------------------------------------- PHY CAPS -------------------------------------*/
 #define SOC_PHY_COMBO_MODULE                  (1) /*!< Support Wi-Fi, BT and BLE*/
+
+/*--------------------------- EMAC --------------------------------*/
+#define SOC_EMAC_RMII_CLK_OUT_INTERNAL_LOOPBACK     (1) /*!< REF RMII CLK output is looped back internally */

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -33,14 +33,14 @@ esp_err_t sleep_clock_system_retention_init(void)
 {
 #if CONFIG_IDF_TARGET_ESP32C6
     #define N_REGS_PCR()    (((PCR_SRAM_POWER_CONF_REG - DR_REG_PCR_BASE) / 4) + 1)
-#elif CONFIG_IDF_TARGET_ESP32H2
+#elif CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32C5
     #define N_REGS_PCR()    (((PCR_PWDET_SAR_CLK_CONF_REG - DR_REG_PCR_BASE) / 4) + 1)
 #endif
     const static sleep_retention_entries_config_t pcr_regs_retention[] = {
         [0] = { .config = REGDMA_LINK_CONTINUOUS_INIT(REGDMA_PCR_LINK(0), DR_REG_PCR_BASE, DR_REG_PCR_BASE, N_REGS_PCR(), 0, 0), .owner = ENTRY(0) | ENTRY(2) }  /* pcr */
     };
 
-    esp_err_t err = sleep_retention_entries_create(pcr_regs_retention, ARRAY_SIZE(pcr_regs_retention), REGDMA_LINK_PRI_0, SLEEP_RETENTION_MODULE_CLOCK_SYSTEM);
+    esp_err_t err = sleep_retention_entries_create(pcr_regs_retention, ARRAY_SIZE(pcr_regs_retention), REGDMA_LINK_PRI_SYS_CLK, SLEEP_RETENTION_MODULE_CLOCK_SYSTEM);
     ESP_RETURN_ON_ERROR(err, TAG, "failed to allocate memory for system (PCR) retention");
     ESP_LOGI(TAG, "System Power, Clock and Reset sleep retention initialization");
     return ESP_OK;
@@ -53,7 +53,11 @@ void sleep_clock_system_retention_deinit(void)
 
 esp_err_t sleep_clock_modem_retention_init(void)
 {
+#if CONFIG_IDF_TARGET_ESP32C5
+    #define N_REGS_SYSCON() (((MODEM_SYSCON_MEM_RF2_CONF_REG - MODEM_SYSCON_TEST_CONF_REG) / 4) + 1)
+#else
     #define N_REGS_SYSCON() (((MODEM_SYSCON_MEM_CONF_REG - MODEM_SYSCON_TEST_CONF_REG) / 4) + 1)
+#endif
 #if SOC_PM_RETENTION_SW_TRIGGER_REGDMA
     #define N_REGS_LPCON() (((MODEM_LPCON_MEM_CONF_REG - MODEM_LPCON_TEST_CONF_REG) / 4) + 1)
 #endif
@@ -65,7 +69,7 @@ esp_err_t sleep_clock_modem_retention_init(void)
 #endif
     };
 
-    esp_err_t err = sleep_retention_entries_create(modem_regs_retention, ARRAY_SIZE(modem_regs_retention), REGDMA_LINK_PRI_1, SLEEP_RETENTION_MODULE_CLOCK_MODEM);
+    esp_err_t err = sleep_retention_entries_create(modem_regs_retention, ARRAY_SIZE(modem_regs_retention), REGDMA_LINK_PRI_MODEM_CLK, SLEEP_RETENTION_MODULE_CLOCK_MODEM);
     ESP_RETURN_ON_ERROR(err, TAG, "failed to allocate memory for modem (SYSCON) retention, 2 level priority");
     ESP_LOGI(TAG, "Modem Power, Clock and Reset sleep retention initialization");
     return ESP_OK;
@@ -89,7 +93,7 @@ bool clock_domain_pd_allowed(void)
 }
 
 #if CONFIG_PM_POWER_DOWN_PERIPHERAL_IN_LIGHT_SLEEP || CONFIG_MAC_BB_PD || CONFIG_BT_LE_SLEEP_ENABLE || CONFIG_IEEE802154_SLEEP_ENABLE
-ESP_SYSTEM_INIT_FN(sleep_clock_startup_init, BIT(0), 106)
+ESP_SYSTEM_INIT_FN(sleep_clock_startup_init, SECONDARY, BIT(0), 106)
 {
 #if CONFIG_PM_POWER_DOWN_PERIPHERAL_IN_LIGHT_SLEEP
     sleep_clock_system_retention_init();

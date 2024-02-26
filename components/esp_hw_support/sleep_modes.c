@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -37,8 +37,6 @@
 #include "hal/rtc_hal.h"
 #endif
 
-#include "driver/uart.h"
-
 #include "soc/rtc.h"
 #include "soc/soc_caps.h"
 #include "regi2c_ctrl.h"    //For `REGI2C_ANA_CALI_PD_WORKAROUND`, temp
@@ -49,8 +47,6 @@
 #include "hal/uart_hal.h"
 #if SOC_TOUCH_SENSOR_SUPPORTED
 #include "hal/touch_sensor_hal.h"
-#include "driver/touch_sensor.h"
-#include "driver/touch_sensor_common.h"
 #endif
 #include "hal/clk_gate_ll.h"
 
@@ -84,6 +80,9 @@
 #include "esp32c2/rom/rtc.h"
 #elif CONFIG_IDF_TARGET_ESP32C6
 #include "esp32c6/rom/rtc.h"
+#include "hal/gpio_ll.h"
+#elif CONFIG_IDF_TARGET_ESP32C5
+#include "esp32c5/rom/rtc.h"
 #include "hal/gpio_ll.h"
 #elif CONFIG_IDF_TARGET_ESP32H2
 #include "esp32h2/rom/rtc.h"
@@ -133,6 +132,9 @@
 #define DEFAULT_SLEEP_OUT_OVERHEAD_US       (118)
 #define DEFAULT_HARDWARE_OUT_OVERHEAD_US    (9)
 #elif CONFIG_IDF_TARGET_ESP32C6
+#define DEFAULT_SLEEP_OUT_OVERHEAD_US       (318)
+#define DEFAULT_HARDWARE_OUT_OVERHEAD_US    (56)
+#elif CONFIG_IDF_TARGET_ESP32C5  // TODO: [ESP32C5] IDF-8638, IDF-8640
 #define DEFAULT_SLEEP_OUT_OVERHEAD_US       (318)
 #define DEFAULT_HARDWARE_OUT_OVERHEAD_US    (56)
 #elif CONFIG_IDF_TARGET_ESP32H2
@@ -437,10 +439,10 @@ static void IRAM_ATTR flush_uarts(void)
 {
     for (int i = 0; i < SOC_UART_HP_NUM; ++i) {
 #ifdef CONFIG_IDF_TARGET_ESP32
-        esp_rom_uart_tx_wait_idle(i);
+        esp_rom_output_tx_wait_idle(i);
 #else
         if (uart_ll_is_enabled(i)) {
-            esp_rom_uart_tx_wait_idle(i);
+            esp_rom_output_tx_wait_idle(i);
         }
 #endif
     }
@@ -515,7 +517,7 @@ FORCE_INLINE_ATTR bool light_sleep_uart_prepare(uint32_t pd_flags, int64_t sleep
         } else {
             /* Only flush the uart_num configured to console, the transmission integrity of
                other uarts is guaranteed by the UART driver */
-            esp_rom_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
+            esp_rom_output_tx_wait_idle(CONFIG_ESP_CONSOLE_ROM_SERIAL_PORT_NUM);
         }
     } else {
         suspend_uarts();
@@ -673,11 +675,13 @@ static esp_err_t IRAM_ATTR esp_sleep_start(uint32_t pd_flags, esp_sleep_mode_t m
     if (s_config.wakeup_triggers & RTC_EXT0_TRIG_EN) {
         ext0_wakeup_prepare();
     }
+    // for !(s_config.wakeup_triggers & RTC_EXT0_TRIG_EN), ext0 wakeup will be turned off in hardware in the real call to sleep
 #endif
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
     if (s_config.wakeup_triggers & RTC_EXT1_TRIG_EN) {
         ext1_wakeup_prepare();
     }
+    // for !(s_config.wakeup_triggers & RTC_EXT1_TRIG_EN), ext1 wakeup will be turned off in hardware in the real call to sleep
 #endif
 
 #if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
@@ -1450,9 +1454,8 @@ touch_pad_t esp_sleep_get_touchpad_wakeup_status(void)
         return TOUCH_PAD_MAX;
     }
     touch_pad_t pad_num;
-    esp_err_t ret = touch_pad_get_wakeup_status(&pad_num); //TODO 723diff commit id:fda9ada1b
-    assert(ret == ESP_OK && "wakeup reason is RTC_TOUCH_TRIG_EN but SENS_TOUCH_MEAS_EN is zero");
-    return (ret == ESP_OK) ? pad_num : TOUCH_PAD_MAX;
+    touch_hal_get_wakeup_status(&pad_num);
+    return pad_num;
 }
 
 #endif // SOC_TOUCH_SENSOR_SUPPORTED
@@ -1495,12 +1498,25 @@ static void ext0_wakeup_prepare(void)
     rtcio_hal_function_select(rtc_gpio_num, RTCIO_LL_FUNC_RTC);
     rtcio_hal_input_enable(rtc_gpio_num);
 }
+
 #endif // SOC_PM_SUPPORT_EXT0_WAKEUP
 
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
 esp_err_t esp_sleep_enable_ext1_wakeup(uint64_t io_mask, esp_sleep_ext1_wakeup_mode_t level_mode)
 {
-    if (level_mode > ESP_EXT1_WAKEUP_ANY_HIGH) {
+    if (io_mask == 0 && level_mode > ESP_EXT1_WAKEUP_ANY_HIGH) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    // Reset all EXT1 configs
+    esp_sleep_disable_ext1_wakeup_io(0);
+
+    return esp_sleep_enable_ext1_wakeup_io(io_mask, level_mode);
+}
+
+
+esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t io_mask, esp_sleep_ext1_wakeup_mode_t level_mode)
+{
+    if (io_mask == 0 && level_mode > ESP_EXT1_WAKEUP_ANY_HIGH) {
         return ESP_ERR_INVALID_ARG;
     }
     // Translate bit map of GPIO numbers into the bit map of RTC IO numbers
@@ -1515,13 +1531,58 @@ esp_err_t esp_sleep_enable_ext1_wakeup(uint64_t io_mask, esp_sleep_ext1_wakeup_m
         }
         rtc_gpio_mask |= BIT(rtc_io_number_get(gpio));
     }
-    s_config.ext1_rtc_gpio_mask = rtc_gpio_mask;
+
+#if !SOC_PM_SUPPORT_EXT1_WAKEUP_MODE_PER_PIN
+    uint32_t ext1_rtc_gpio_mask = 0;
+    uint32_t ext1_trigger_mode = 0;
+
+    ext1_rtc_gpio_mask = s_config.ext1_rtc_gpio_mask | rtc_gpio_mask;
     if (level_mode) {
-        s_config.ext1_trigger_mode = rtc_gpio_mask;
+        ext1_trigger_mode = s_config.ext1_trigger_mode | rtc_gpio_mask;
     } else {
-        s_config.ext1_trigger_mode = 0;
+        ext1_trigger_mode = s_config.ext1_trigger_mode & (~rtc_gpio_mask);
+    }
+    if (((ext1_rtc_gpio_mask & ext1_trigger_mode) != ext1_rtc_gpio_mask) &&
+    ((ext1_rtc_gpio_mask & ext1_trigger_mode) != 0)) {
+        return ESP_ERR_NOT_ALLOWED;
+    }
+#endif
+
+    s_config.ext1_rtc_gpio_mask |= rtc_gpio_mask;
+    if (level_mode) {
+        s_config.ext1_trigger_mode |= rtc_gpio_mask;
+    } else {
+        s_config.ext1_trigger_mode &= (~rtc_gpio_mask);
     }
     s_config.wakeup_triggers |= RTC_EXT1_TRIG_EN;
+    return ESP_OK;
+}
+
+esp_err_t esp_sleep_disable_ext1_wakeup_io(uint64_t io_mask)
+{
+    if (io_mask == 0) {
+        s_config.ext1_rtc_gpio_mask = 0;
+        s_config.ext1_trigger_mode = 0;
+    } else {
+        // Translate bit map of GPIO numbers into the bit map of RTC IO numbers
+        uint32_t rtc_gpio_mask = 0;
+        for (int gpio = 0; io_mask; ++gpio, io_mask >>= 1) {
+            if ((io_mask & 1) == 0) {
+                continue;
+            }
+            if (!esp_sleep_is_valid_wakeup_gpio(gpio)) {
+                ESP_LOGE(TAG, "Not an RTC IO Considering io_mask: GPIO%d", gpio);
+                return ESP_ERR_INVALID_ARG;
+            }
+            rtc_gpio_mask |= BIT(rtc_io_number_get(gpio));
+        }
+        s_config.ext1_rtc_gpio_mask &= (~rtc_gpio_mask);
+        s_config.ext1_trigger_mode &= (~rtc_gpio_mask);
+    }
+
+    if (s_config.ext1_rtc_gpio_mask == 0) {
+        s_config.wakeup_triggers &= (~RTC_EXT1_TRIG_EN);
+    }
     return ESP_OK;
 }
 

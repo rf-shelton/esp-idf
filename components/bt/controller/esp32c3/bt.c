@@ -463,9 +463,8 @@ static void interrupt_set_wrapper(int cpu_no, int intr_source, int intr_num, int
 {
     esp_rom_route_intr_matrix(cpu_no, intr_source, intr_num);
 #if __riscv
-    esprv_intc_int_set_priority(intr_num, intr_prio);
-    //esprv_intc_int_enable_level(1 << intr_num);
-    esprv_intc_int_set_type(intr_num, 0);
+    esprv_int_set_priority(intr_num, intr_prio);
+    esprv_int_set_type(intr_num, 0);
 #endif
 }
 
@@ -637,7 +636,7 @@ static int IRAM_ATTR queue_recv_from_isr_wrapper(void *queue, void *item, void *
 
 static int task_create_wrapper(void *task_func, const char *name, uint32_t stack_depth, void *param, uint32_t prio, void *task_handle, uint32_t core_id)
 {
-    return (uint32_t)xTaskCreatePinnedToCore(task_func, name, stack_depth, param, prio, task_handle, (core_id < portNUM_PROCESSORS ? core_id : tskNO_AFFINITY));
+    return (uint32_t)xTaskCreatePinnedToCore(task_func, name, stack_depth, param, prio, task_handle, (core_id < CONFIG_FREERTOS_NUMBER_OF_CORES ? core_id : tskNO_AFFINITY));
 }
 
 static void task_delete_wrapper(void *task_handle)
@@ -652,7 +651,7 @@ static bool IRAM_ATTR is_in_isr_wrapper(void)
 
 static void *malloc_internal_wrapper(size_t size)
 {
-    void *p = heap_caps_malloc(size, MALLOC_CAP_DEFAULT|MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA);
+    void *p = heap_caps_malloc(size, MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA);
     if(p == NULL) {
         ESP_LOGE(BT_LOG_TAG, "Malloc failed");
     }
@@ -721,19 +720,26 @@ static void btdm_sleep_enter_phase1_wrapper(uint32_t lpcycles)
         return;
     }
 
-    // start a timer to wake up and acquire the pm_lock before modem_sleep awakes
     uint32_t us_to_sleep = btdm_lpcycles_2_hus(lpcycles, NULL) >> 1;
 
 #define BTDM_MIN_TIMER_UNCERTAINTY_US      (1800)
+#define BTDM_RTC_SLOW_CLK_RC_DRIFT_PERCENT 7
     assert(us_to_sleep > BTDM_MIN_TIMER_UNCERTAINTY_US);
     // allow a maximum time uncertainty to be about 488ppm(1/2048) at least as clock drift
     // and set the timer in advance
     uint32_t uncertainty = (us_to_sleep >> 11);
+#if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+    if (rtc_clk_slow_src_get() == SOC_RTC_SLOW_CLK_SRC_RC_SLOW) {
+        uncertainty = us_to_sleep * BTDM_RTC_SLOW_CLK_RC_DRIFT_PERCENT / 100;
+    }
+#endif
+
     if (uncertainty < BTDM_MIN_TIMER_UNCERTAINTY_US) {
         uncertainty = BTDM_MIN_TIMER_UNCERTAINTY_US;
     }
 
     assert (s_lp_stat.wakeup_timer_started == 0);
+    // start a timer to wake up and acquire the pm_lock before modem_sleep awakes
     if (esp_timer_start_once(s_btdm_slp_tmr, us_to_sleep - uncertainty) == ESP_OK) {
         s_lp_stat.wakeup_timer_started = 1;
     } else {
@@ -752,12 +758,12 @@ static void btdm_sleep_enter_phase2_wrapper(void)
             assert(0);
         }
 
-        if (s_lp_stat.pm_lock_released == 0) {
 #ifdef CONFIG_PM_ENABLE
+        if (s_lp_stat.pm_lock_released == 0) {
             esp_pm_lock_release(s_pm_lock);
-#endif
             s_lp_stat.pm_lock_released = 1;
         }
+#endif
     }
 }
 
